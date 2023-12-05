@@ -6,7 +6,7 @@ import { logger } from "./utils/logger";
 import moment from "moment";
 import Schedule from "./models/Schedule";
 import Contact from "./models/Contact";
-import { Op, QueryTypes } from "sequelize";
+import { Op, QueryTypes, Sequelize } from "sequelize";
 import GetDefaultWhatsApp from "./helpers/GetDefaultWhatsApp";
 import Campaign from "./models/Campaign";
 import ContactList from "./models/ContactList";
@@ -22,6 +22,7 @@ import path from "path";
 import User from "./models/User";
 import Company from "./models/Company";
 import Plan from "./models/Plan";
+import Ticket from "./models/Ticket";
 const nodemailer = require('nodemailer');
 const CronJob = require('cron').CronJob;
 
@@ -48,6 +49,8 @@ interface DispatchCampaignData {
 }
 
 export const userMonitor = new Queue("UserMonitor", connection);
+
+export const queueMonitor = new Queue("QueueMonitor", connection);
 
 
 export const messageQueue = new Queue("MessageQueue", connection, {
@@ -84,6 +87,112 @@ async function handleSendMessage(job) {
     throw e;
   }
 }
+
+async function handleVerifyQueue(job) {
+  logger.info("Buscando atendimentos perdidos nas filas");
+  try {
+    const companies = await Company.findAll({
+      attributes: ['id', 'name'],
+      where: {
+        status: true,
+        dueDate: {
+          [Op.gt]: Sequelize.literal('CURRENT_DATE')
+        }
+      },
+      include: [
+        {
+          model: Whatsapp, attributes: ["id", "name", "status", "timeSendQueue", "sendIdQueue"], where: {
+            timeSendQueue: {
+              [Op.gt]: 0
+            }
+          }
+        },
+      ]
+    });
+
+    companies.map(async c => {
+      logger.info(c);
+      c.whatsapps.map(async w => {
+        logger.info(w);
+
+        if (w.status === "CONNECTED") {
+          var companyId = c.id;
+          const moveQueue = w.timeSendQueue ? w.timeSendQueue : 0;
+          const moveQueueId = w.sendIdQueue;
+          const moveQueueTime = moveQueue;
+          const idQueue = moveQueueId;
+          const timeQueue = moveQueueTime;
+
+          if (moveQueue > 0) {
+            if (!isNaN(idQueue) && Number.isInteger(idQueue) && !isNaN(timeQueue) && Number.isInteger(timeQueue)) {
+
+              const tempoPassado = moment().subtract(timeQueue, "minutes").utc().format();
+              // const tempoAgora = moment().utc().format();
+
+              const { count, rows: tickets } = await Ticket.findAndCountAll({
+                where: {
+                  status: "pending",
+                  queueId: null,
+                  companyId: companyId,
+                  whatsappId: w.id,
+                  updatedAt: {
+                    [Op.lt]: tempoPassado
+                  }
+                },
+                include: [
+                  {
+                    model: Contact,
+                    as: "contact",
+                    attributes: ["id", "name", "number", "email", "profilePicUrl"],
+                    include: ["extraInfo"]
+                  }
+                ]
+              });
+
+              logger.info(tickets)
+
+              if (count > 0) {
+                tickets.map(async ticket => {
+                  logger.info(ticket);
+                  await ticket.update({
+                    queueId: idQueue
+                  });
+
+                  await ticket.reload();
+
+                  const io = getIO();
+                  io.to(ticket.status)
+                    .to("notification")
+                    .to(ticket.id.toString())
+                    .emit(`company-${companyId}-ticket`, {
+                      action: "update",
+                      ticket,
+                      ticketId: ticket.id
+                    });
+
+                  // io.to("pending").emit(`company-${companyId}-ticket`, {
+                  //   action: "update",
+                  //   ticket,
+                  // });
+
+                  logger.info(`Atendimento Perdido: ${ticket.id} - Empresa: ${companyId}`);
+                });
+              } else {
+                logger.info(`Nenhum atendimento perdido encontrado - Empresa: ${companyId}`);
+              }
+            } else {
+              logger.info(`Condição não respeitada - Empresa: ${companyId}`);
+            }
+          }
+        }
+      });
+    });
+  } catch (e: any) {
+    Sentry.captureException(e);
+    logger.error("SearchForQueue -> VerifyQueue: error", e.message);
+    throw e;
+  }
+};
 
 async function handleVerifySchedules(job) {
   try {
@@ -695,6 +804,8 @@ export async function startQueueProcess() {
 
   userMonitor.process("VerifyLoginStatus", handleLoginStatus);
 
+  queueMonitor.process("VerifyQueueStatus", handleVerifyQueue);
+
 
 
 
@@ -718,6 +829,15 @@ export async function startQueueProcess() {
 
   userMonitor.add(
     "VerifyLoginStatus",
+    {},
+    {
+      repeat: { cron: "* * * * *" },
+      removeOnComplete: true
+    }
+  );
+
+  queueMonitor.add(
+    "VerifyQueueStatus",
     {},
     {
       repeat: { cron: "* * * * *" },

@@ -23,6 +23,8 @@ interface Request {
   tokenMeta?: string;
   channel?: string;
   facebookPageUserId?: string;
+  sendIdQueue?: number;
+  timeSendQueue?: number;
 }
 
 interface Response {
@@ -46,7 +48,9 @@ const CreateWhatsAppService = async ({
   facebookUserToken,
   facebookPageUserId,
   tokenMeta,
-  channel = "whatsapp"
+  channel = "whatsapp",
+  timeSendQueue,
+  sendIdQueue,
 }: Request): Promise<Response> => {
   const company = await Company.findOne({
     where: {
@@ -157,6 +161,8 @@ const CreateWhatsAppService = async ({
       facebookUserToken,
       facebookPageUserId,
       tokenMeta,
+      timeSendQueue,
+      sendIdQueue,
     },
     { include: ["queues"] }
   );

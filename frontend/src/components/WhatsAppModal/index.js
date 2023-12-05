@@ -77,6 +77,8 @@ const WhatsAppModal = ({ open, onClose, whatsAppId }) => {
     isDefault: false,
     token: "",
     provider: "beta",
+    timeSendQueue: 0,
+    sendIdQueue: 0,
   };
   const [whatsApp, setWhatsApp] = useState(initialState);
   const [selectedQueueIds, setSelectedQueueIds] = useState([]);
@@ -297,6 +299,55 @@ const WhatsAppModal = ({ open, onClose, whatsAppId }) => {
                   selectedQueueIds={selectedQueueIds}
                   onChange={(selectedIds) => setSelectedQueueIds(selectedIds)}
                 />
+                <div>
+                  <h3>{i18n.t("whatsappModal.form.queueRedirection")}</h3>
+                  <p>{i18n.t("whatsappModal.form.queueRedirectionDesc")}</p>
+                  <Grid spacing={2} container>
+
+                    <Grid xs={6} md={6} item>
+                      <FormControl
+                        variant="outlined"
+                        margin="dense"
+                        className={classes.FormControl}
+                        fullWidth
+                      >
+                        <InputLabel id="sendIdQueue-selection-label">
+                          {i18n.t("whatsappModal.form.sendIdQueue")}
+                        </InputLabel>
+                        <Field
+                          as={Select}
+                          name="sendIdQueue"
+                          id="sendIdQueue"
+                          label={i18n.t("whatsappModal.form.sendIdQueue")}
+                          placeholder={i18n.t("whatsappModal.form.sendIdQueue")}
+                          labelId="sendIdQueue-selection-label"
+                        >
+                          <MenuItem value={0}>&nbsp;</MenuItem>
+                          {queues.map(queue => (
+                            <MenuItem key={queue.id} value={queue.id}>
+                              {queue.name}
+                            </MenuItem>
+                          ))}
+                        </Field>
+                      </FormControl>
+
+                    </Grid>
+
+                    <Grid xs={6} md={6} item>
+                      <Field
+                        as={TextField}
+                        label={i18n.t("whatsappModal.form.timeSendQueue")}
+                        fullWidth
+                        name="timeSendQueue"
+                        variant="outlined"
+                        margin="dense"
+                        error={touched.timeSendQueue && Boolean(errors.timeSendQueue)}
+                        helperText={touched.timeSendQueue && errors.timeSendQueue}
+                      />
+                    </Grid>
+
+                  </Grid>
+                </div>
               </DialogContent>
               <DialogActions>
                 <Button
