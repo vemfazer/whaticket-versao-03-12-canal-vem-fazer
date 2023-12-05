@@ -121,6 +121,13 @@ class Whatsapp extends Model<Whatsapp> {
 
   @Column(DataType.TEXT)
   channel: string;
+
+  @Default(0)
+  @Column
+  timeSendQueue: number;
+
+  @Column
+  sendIdQueue: number;
 }
 
 export default Whatsapp;
